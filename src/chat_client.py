@@ -14,23 +14,21 @@ class ChatClient:
 
 		# If the user hasn't gracefully ended then keeping reading and outputting server content
 		while not user_break.is_set():
-			server_contents = sock.recv(4096).decode('utf-8')
+			server_contents = (sock.recv(4096)).decode('utf-8')
 			print(server_contents)
 	
 	# Accepting user input to send to the server
 	def writing_thread(self, sock, user_break):
 		while True:
-			user_input = input("[" + self.username + "]")
+			user_input = input()
 
 			# Graceful shutdown of client
 			if user_input == "exit":
 				user_break.set()
+				break
 
 			# Sending user message to the server
 			sock.sendall(user_input.encode('utf-8'))
-
-			if user_break.is_set():
-				break
 	
 	def execute(self, sock):
 		try:
@@ -42,7 +40,7 @@ class ChatClient:
 
 			# Get message history
 			while True:
-				msg_history = sock.recv(4096).decode('utf-8')
+				msg_history = (sock.recv(4096)).decode('utf-8')
 				
 				if "HISTORY_END" == msg_history:
 					break
@@ -56,7 +54,7 @@ class ChatClient:
 			server_reader = threading.Thread(target=self.reading_thread, args=(sock, user_break))
 
 			# Writes user input to server
-			console_writer  = threading.Thread(targe=self.writer_thread, args=(sock, user_break))
+			console_writer  = threading.Thread(target=self.writing_thread, args=(sock, user_break))
 
 			server_reader.start()
 			console_writer.start()
@@ -64,6 +62,8 @@ class ChatClient:
 			# Joins after user_break is set
 			server_reader.join()
 			console_writer.join()
+
+			sock.close()
 
 		except ConnectionRefusedError:
 			print("Could not connect to server")
