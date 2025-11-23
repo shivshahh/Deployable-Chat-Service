@@ -6,7 +6,7 @@ import threading
 class ChatClient:
 	def __init__(self, host, port, username):
 		self.host = host
-		self.port = port
+		self.port = int(port)
 		self.username = username
 
 	# Reading what the server sends and printing out to console
@@ -34,7 +34,7 @@ class ChatClient:
 	
 	def execute(self, sock):
 		try:
-			sock.connect()
+			sock.connect((self.host, self.port))
 			print("Connected to the chat server")
 
 			# Send username
@@ -70,10 +70,10 @@ class ChatClient:
 			return
 
 	def __str__(self):
-		return "IP: " + self.host + "\nPort: " + self.port + "\nUsername: " + self.username
+		return "IP: " + self.host + "\nPort: " + str(self.port) + "\nUsername: " + self.username
 
 def main():
-	if(len(sys.argv) < 3):
+	if(len(sys.argv) < 4):
 		print("Usage: python3 chat_client.py [chat server ip] [chat server port] [username]")
 		return
 	
@@ -81,7 +81,7 @@ def main():
 	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 	# Show user client options
-	print("Type 'exit' to gracefully end client.\n--- Client config ---\n" + client)
+	print("Type 'exit' to gracefully end client.\n--- Client config ---\n" + str(client))
 	client.execute(sock)
 
 if __name__ == "__main__":
