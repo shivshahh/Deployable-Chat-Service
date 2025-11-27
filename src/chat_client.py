@@ -12,15 +12,32 @@ class ChatClient:
 	# Reading what the server sends and printing out to console
 	def reading_thread(self, sock, user_break):
 
-		# If the user hasn't gracefully ended then keeping reading and outputting server content
 		while not user_break.is_set():
-			server_contents = (sock.recv(4096)).decode('utf-8')
-			print(server_contents)
+			try:
+				msg = sock.recv(4096).decode('utf-8')
+				if not msg:
+					user_break.set()
+					break
+
+				# Clear current input line
+				sys.stdout.write("\r")  
+				sys.stdout.flush()
+
+				# Print the server/broadcast message
+				print(msg, end='')
+
+				# Redraw prompt
+				sys.stdout.write(f"\n[{self.username}]: ")
+				sys.stdout.flush()
+
+			except:
+				user_break.set()
+				break
 	
 	# Accepting user input to send to the server
 	def writing_thread(self, sock, user_break):
 		while True:
-			user_input = input()
+			user_input = input(f"[{self.username}]: ")
 
 			# Graceful shutdown of client
 			if user_input == "exit":
@@ -39,13 +56,24 @@ class ChatClient:
 			sock.sendall(self.username.encode('utf-8'))
 
 			# Get message history
+			buffer = ""
 			while True:
-				msg_history = (sock.recv(4096)).decode('utf-8')
-				
-				if "HISTORY_END" == msg_history:
-					break
+				chunk = sock.recv(4096).decode('utf-8')
+				if not chunk:
+					print("Server closed during history load.")
+					return
 
-				print(msg_history, end='')
+				buffer += chunk
+
+				# If HISTORY_END appears, stop reading history
+				if "HISTORY_END" in buffer:
+					history, remainder = buffer.split("HISTORY_END", 1)
+
+					# Print all history messages
+					if history.strip():
+						print(history, end='')
+					buffer = ""
+					break
 
 			# Will join when user is done
 			user_break = threading.Event()
