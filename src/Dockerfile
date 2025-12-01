@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies
-RUN pip install --no-cache-dir redis
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Expose the chat server port
 EXPOSE 6000
