@@ -47,16 +47,16 @@ class ChatServer:
     # Each users connection runs in this thread that waits for a message
     def user_thread(self, username):
         connection = self.connections[username]
-        # TODO List users on join?
+
+        # Send message history first
         self.send_history(connection)
-        # TODO Pull message history and send to user
-        # connection.sendall("HISTORY_END\n".encode('utf-8'))
 
-        # Wait for input, send data when input recieved
+        # NOW broadcast to others that user joined
+        self.broadcast("server", f"[{username}] connected")
+
         while True:
-            msg = (connection.recv(1024)).decode('utf-8')
+            msg = connection.recv(1024).decode('utf-8')
 
-            # Client gracefully closes connection
             if not msg:
                 print(f"[{username}] disconnected")
                 connection.close()
@@ -68,26 +68,30 @@ class ChatServer:
 
     def execute(self, sock):
         try:
-            sock.bind(('127.0.0.1', self.port))
+            sock.bind(('0.0.0.0', self.port))
             sock.listen()
             print("Listening for connections on: " + str(self.port))
 
             while True:
-                # When a connection happens get the username and send to thread
+                # Accept a new connection
                 client_connection, ip = sock.accept()
-                client_username = (client_connection.recv(1024)).decode('utf-8')
+                client_username = client_connection.recv(1024).decode('utf-8').strip()
 
-                connection_thread = threading.Thread(target=self.user_thread, args=(client_username,))
-                
-                # Track the thread for each user
+                # Track connection
                 self.connections[client_username] = client_connection
 
                 print(f"[{client_username}] connected")
-                self.broadcast("server", f"[{client_username}] connected")
+
+                # Start the user thread (will send history AND then broadcast join)
+                connection_thread = threading.Thread(
+                    target=self.user_thread,
+                    args=(client_username,)
+                )
                 connection_thread.start()
 
         except OSError:
             print("Failed to bind to port: " + str(self.port))
+
 
     def __str__(self):
         return "Port: " + str(self.port)
