@@ -39,13 +39,16 @@ class ChatClient:
 		while True:
 			user_input = input(f"[{self.username}]: ")
 
-			# Graceful shutdown of client
 			if user_input == "exit":
 				user_break.set()
+				try:
+					sock.shutdown(socket.SHUT_RDWR)  # unblock reader thread
+				except:
+					pass
 				break
 
-			# Sending user message to the server
 			sock.sendall(user_input.encode('utf-8'))
+
 	
 	def execute(self, sock):
 		try:
@@ -59,6 +62,7 @@ class ChatClient:
 			buffer = ""
 			while True:
 				chunk = sock.recv(4096).decode('utf-8')
+				
 				if not chunk:
 					print("Server closed during history load.")
 					return
