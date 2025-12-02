@@ -4,15 +4,17 @@ FROM python:3.13-slim
 # Set work directory
 WORKDIR /app
 
-# Copy all source code
-COPY . .
+# Copy requirements first for efficient caching
+COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir redis
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY src/ ./src/
 
 # Expose the chat server port
 EXPOSE 6000
 
-# Start the chat server
-CMD ["python", "chat_server.py", "6000"]
-
+# Run from inside src directory
+CMD ["python", "src/chat_server.py", "6000"]
