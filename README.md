@@ -123,7 +123,9 @@ python src/chat_client.py localhost 6000 user1
 python src/chat_client.py localhost 6000 user2
 
 
-## Kubernestes
+## 🚀 Kubernetes
+
+### Prerequisites
 
 Before deploying, ensure you have:
 
@@ -131,7 +133,7 @@ Before deploying, ensure you have:
   - [Download Docker Desktop](https://www.docker.com/products/docker-desktop)
   - Enable K8s: Preferences → Kubernetes → Enable Kubernetes
 
-- ✅ **kubectl** (Kubernetes command-line tool)
+- **kubectl** (Kubernetes command-line tool)
   ```bash
   # macOS
   brew install kubectl
@@ -140,10 +142,18 @@ Before deploying, ensure you have:
   kubectl version --client
   ```
 
-## 🚀 Quick Start (4 Steps)
+### Quick Start (4 Steps)
 
-### **Step 2: Deploy to Kubernetes**
+#### **Step 1: Clone Repository**
 
+```bash
+git clone https://github.com/mshenoy/Deployable-Chat-Service.git
+cd Deployable-Chat-Service
+```
+
+#### **Step 2: Deploy to Kubernetes**
+
+```bash
 # Create namespace
 kubectl apply -f k8s/namespace.yaml
 
@@ -155,35 +165,37 @@ kubectl apply -f k8s/chat-server.yaml
 
 # Deploy Auto-scaling rules
 kubectl apply -f k8s/hpa.yaml
+```
 
-### **Step 3: Verify Deployment**
+#### **Step 3: Verify Deployment**
+
+```bash
 # Check all resources
 kubectl get all -n chat-app
+```
 
-# Expected output:
-# - 1 chat-server pod (1/1 Running)
-# - 1 redis pod (1/1 Running)
-# - 2 services (chat-server, redis)
+Expected output:
+- 1 chat-server pod (1/1 Running)
+- 1 redis pod (1/1 Running)
+- 2 services (chat-server, redis)
 
-
-### **Step 4: Run Chat Clients**
+#### **Step 4: Run Chat Clients**
 
 **Terminal 1: First client**
-
+```bash
 python src/chat_client.py localhost 30060 alice
-
+```
 
 **Terminal 2: Second client**
-
+```bash
 python src/chat_client.py localhost 30060 bob
+```
 
-
-
-### **3. Chat Server Deployment**
+### Chat Server Deployment
 
 Handles multiple client connections and broadcasts messages.
 
-
+```bash
 # Check Chat Server pods
 kubectl get pods -n chat-app -l app=chat-server
 
@@ -192,9 +204,9 @@ kubectl logs -n chat-app -l app=chat-server
 
 # Scale manually
 kubectl scale deployment chat-server --replicas=3 -n chat-app
+```
 
-
-### **4. HPA (Horizontal Pod Autoscaler)**
+### HPA (Horizontal Pod Autoscaler)
 
 Automatically scales pods based on CPU/memory usage.
 
@@ -217,10 +229,9 @@ kubectl describe hpa chat-server-hpa -n chat-app
 
 ---
 
-
 ## 📈 Testing Auto-Scaling
 
-### **Manual Scaling Test**
+### Manual Scaling Test
 
 ```bash
 # Terminal 1: Watch pods scale
@@ -232,7 +243,7 @@ kubectl scale deployment chat-server --replicas=5 -n chat-app
 # Watch pods transition from Pending → Running
 ```
 
-### **Load Test (Trigger Auto-Scaling)**
+### Load Test (Trigger Auto-Scaling)
 
 ```bash
 # Terminal 1: Monitor HPA
@@ -257,7 +268,7 @@ while sleep 0.01; do wget -q -O- http://chat-server:6000; done
 
 ---
 
-### **Common Issues**
+### Common Issues
 
 | Issue | Solution |
 |-------|----------|
