@@ -118,9 +118,6 @@ def main():
     server = ChatServer(sys.argv[1])
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    print("Flushing redis db...")
-    server.redis.flushall()
-
     # Show server config
     print("--- Server config ---\n" + str(server))
     server.execute(sock)
