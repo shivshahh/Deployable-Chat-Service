@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "chat-service.labels" . | nindent 4 }}
+    app: redis
+spec:
+  type: {{ .Values.redis.service.type }}
+  selector:
+    app: redis
+  ports:
+    - port: {{ .Values.redis.service.port }}
+      targetPort: {{ .Values.redis.service.targetPort }}
+

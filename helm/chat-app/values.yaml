@@ -1,0 +1,58 @@
+# Default values for chat-service
+# This is a YAML-formatted file.
+
+namespace:
+  name: chat-app
+  create: true
+
+chatServer:
+  image:
+    repository: mshenoydocker/chat-server
+    tag: latest
+    pullPolicy: Always
+  
+  replicaCount: 1
+  
+  service:
+    type: NodePort
+    port: 6000
+    targetPort: 6000
+    nodePort: 30060
+  
+  env:
+    redisHost: redis
+    redisPort: "6379"
+  
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+redis:
+  image:
+    repository: redis
+    tag: "7"
+  
+  replicaCount: 1
+  
+  service:
+    type: ClusterIP
+    port: 6379
+    targetPort: 6379
+  
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 500Mi
+
