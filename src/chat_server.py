@@ -18,41 +18,52 @@ class ChatServer:
             decode_responses=True
         )
     
-    def save_message(self, username, message):
-        msg = f"[{username}]: {message}"
+    def save_message(self, username, recipient, message):
+        msg = f"[{username}]:[{recipient}] {message}"
         self.redis.rpush("chat_history", msg)
                 
-    def send_history(self, connection):
+    def send_history(self, connection, username, recipient):
         history = self.redis.lrange("chat_history", 0, -1)
+        
         for entry in history:
-            connection.sendall((entry + "\n").encode('utf-8'))
+            tag = entry.split()[0]
+
+            if recipient == "BROADCAST" and "BROADCAST" in tag:
+                connection.sendall((entry + "\n").encode('utf-8'))
+            elif tag == "[" + username + "]:[" + recipient + "]" or tag == "[" + recipient + "]:[" + username + "]":    
+                connection.sendall((entry + "\n").encode('utf-8'))
+
         connection.sendall("HISTORY_END\n".encode('utf-8'))
 
-    # Sends out a message to all the connections
-    def broadcast(self, username, message):
+    # Pushes out messages to the appropriate connections
+    def push(self, username, recipient, message):
 
         if "HISTORY_END" in message:
             return
         
         message = message.rstrip("\n") 
-        broadcast_msg = f"[{username}]: " + message 
+        push_msg = f"[{username}]: " + message 
 
         if username != "server":
-            self.save_message(username, message)
+            self.save_message(username, recipient, message)
 
-        for connection in self.connections:
-            if connection != username and self.connections[connection] is not None:
-                self.connections[connection].sendall(broadcast_msg.encode('utf-8'))
+        if recipient == "BROADCAST":
+            for connection in self.connections:
+                if connection != username and self.connections[connection] is not None:
+                    self.connections[connection][0].sendall(("\\BROADCAST/" + push_msg).encode('utf-8'))
+        elif recipient in self.connections and self.connections[recipient] is not None:
+            self.connections[recipient][0].sendall(push_msg.encode('utf-8'))
 
     # Each users connection runs in this thread that waits for a message
     def user_thread(self, username):
-        connection = self.connections[username]
-
+        connection, recipient = self.connections[username]
+        
+        # TODO modify so only recipient history is sent
         # Send message history first
-        self.send_history(connection)
+        self.send_history(connection, username, recipient)
 
-        # NOW broadcast to others that user joined
-        self.broadcast("server", f"[{username}] connected")
+        # Send that user joined
+        self.push("server", recipient, f"[{username}] connected")
 
         while True:
             msg = connection.recv(1024).decode('utf-8')
@@ -61,10 +72,10 @@ class ChatServer:
                 print(f"[{username}] disconnected")
                 connection.close()
                 self.connections[username] = None
-                self.broadcast("server", f"[{username}] disconnected")
+                self.push("server", recipient, f"[{username}] disconnected")
                 break
 
-            self.broadcast(username, msg)
+            self.push(username, recipient, msg)
 
     def execute(self, sock):
         try:
@@ -75,10 +86,13 @@ class ChatServer:
             while True:
                 # Accept a new connection
                 client_connection, ip = sock.accept()
-                client_username = client_connection.recv(1024).decode('utf-8').strip()
+                client_info = client_connection.recv(1024).decode('utf-8').strip()
+
+                client_username = client_info.split('--')[0]
+                client_recipient = client_info.split('--')[1]
 
                 # Track connection
-                self.connections[client_username] = client_connection
+                self.connections[client_username] = (client_connection, client_recipient)
 
                 print(f"[{client_username}] connected")
 
@@ -103,6 +117,9 @@ def main():
 
     server = ChatServer(sys.argv[1])
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    print("Flushing redis db...")
+    server.redis.flushall()
 
     # Show server config
     print("--- Server config ---\n" + str(server))

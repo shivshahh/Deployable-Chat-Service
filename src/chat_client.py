@@ -8,6 +8,7 @@ class ChatClient:
 		self.host = host
 		self.port = int(port)
 		self.username = username
+		self.recipient = None
 
 	# Reading what the server sends and printing out to console
 	def reading_thread(self, sock, user_break):
@@ -58,6 +59,12 @@ class ChatClient:
 			# Send username
 			sock.sendall(self.username.encode('utf-8'))
 
+			# Send recipient if specified otherwise broadcast
+			if self.recipient is not None:
+				sock.sendall(("--" + self.recipient).encode('utf-8'))
+			else:
+				sock.sendall(("--BROADCAST").encode('utf-8'))
+
 			# Get message history
 			buffer = ""
 			while True:
@@ -102,14 +109,17 @@ class ChatClient:
 			return
 
 	def __str__(self):
-		return "IP: " + self.host + "\nPort: " + str(self.port) + "\nUsername: " + self.username
+		return "IP: " + self.host + "\nPort: " + str(self.port) + "\nUsername: " + self.username + "\nRecipient: " + str(self.recipient)
 
 def main():
-	if(len(sys.argv) < 4):
-		print("Usage: python3 chat_client.py [chat server ip] [chat server port] [username]")
+	if len(sys.argv) < 4:
+		print("Usage: python3 chat_client.py <chat server ip> <chat server port> <username> [recipient]")
 		return
 	
 	client = ChatClient(sys.argv[1], sys.argv[2], sys.argv[3])
+	if len(sys.argv) == 5:
+		client.recipient = sys.argv[4]
+	
 	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 	# Show user client options
