@@ -9,6 +9,7 @@ class ChatServer:
         self.port = int(port)
         # Dictionary that maps username to connection socket
         self.connections = {}
+        self.connections_lock = threading.Lock()
         self.redis = self.redis = redis.Redis(
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", 6379)),
@@ -23,17 +24,22 @@ class ChatServer:
         self.redis.rpush("chat_history", msg)
                 
     def send_history(self, connection, username, recipient):
-        history = self.redis.lrange("chat_history", 0, -1)
+        # Limit history to last 1000 messages to prevent memory issues
+        history = self.redis.lrange("chat_history", -1000, -1)
         
-        for entry in history:
-            tag = entry.split()[0]
+        try:
+            for entry in history:
+                tag = entry.split()[0]
 
-            if recipient == "BROADCAST" and "BROADCAST" in tag:
-                connection.sendall((entry + "\n").encode('utf-8'))
-            elif tag == "[" + username + "]:[" + recipient + "]" or tag == "[" + recipient + "]:[" + username + "]":    
-                connection.sendall((entry + "\n").encode('utf-8'))
+                if recipient == "BROADCAST" and "BROADCAST" in tag:
+                    connection.sendall((entry + "\n").encode('utf-8'))
+                elif tag == "[" + username + "]:[" + recipient + "]" or tag == "[" + recipient + "]:[" + username + "]":    
+                    connection.sendall((entry + "\n").encode('utf-8'))
 
-        connection.sendall("HISTORY_END\n".encode('utf-8'))
+            connection.sendall("HISTORY_END\n".encode('utf-8'))
+        except (OSError, BrokenPipeError, ConnectionResetError):
+            # Connection closed during history send, let caller handle it
+            raise
 
     # Pushes out messages to the appropriate connections
     def push(self, username, recipient, message):
@@ -48,30 +54,77 @@ class ChatServer:
             self.save_message(username, recipient, message)
 
         if recipient == "BROADCAST":
-            for connection in self.connections:
-                if connection != username and self.connections[connection] is not None:
-                    self.connections[connection][0].sendall(("\\BROADCAST/" + push_msg).encode('utf-8'))
-        elif recipient in self.connections and self.connections[recipient] is not None:
-            self.connections[recipient][0].sendall(push_msg.encode('utf-8'))
+            # Create a copy of connection keys to avoid modification during iteration
+            with self.connections_lock:
+                connection_keys = list(self.connections.keys())
+            
+            for connection_name in connection_keys:
+                if connection_name != username:
+                    with self.connections_lock:
+                        conn_data = self.connections.get(connection_name)
+                    
+                    if conn_data is not None:
+                        conn_socket = conn_data[0]
+                        try:
+                            conn_socket.sendall(("\\BROADCAST/" + push_msg + "\n").encode('utf-8'))
+                        except (OSError, BrokenPipeError, ConnectionResetError):
+                            # Connection is closed, clean it up
+                            with self.connections_lock:
+                                if connection_name in self.connections:
+                                    del self.connections[connection_name]
+                            pass
+        else:
+            with self.connections_lock:
+                conn_data = self.connections.get(recipient)
+            
+            if conn_data is not None:
+                conn_socket = conn_data[0]
+                try:
+                    conn_socket.sendall((push_msg + "\n").encode('utf-8'))
+                except (OSError, BrokenPipeError, ConnectionResetError):
+                    # Connection is closed, clean it up
+                    with self.connections_lock:
+                        if recipient in self.connections:
+                            del self.connections[recipient]
+                    pass
 
     # Each users connection runs in this thread that waits for a message
     def user_thread(self, username):
-        connection, recipient = self.connections[username]
+        with self.connections_lock:
+            conn_data = self.connections.get(username)
+            if conn_data is None:
+                return
+            connection, recipient = conn_data
         
         # TODO modify so only recipient history is sent
         # Send message history first
-        self.send_history(connection, username, recipient)
+        try:
+            self.send_history(connection, username, recipient)
+        except (OSError, BrokenPipeError, ConnectionResetError):
+            # Connection closed before history could be sent
+            with self.connections_lock:
+                if username in self.connections:
+                    del self.connections[username]
+            return
 
         # Send that user joined
         self.push("server", recipient, f"[{username}] connected")
 
         while True:
-            msg = connection.recv(1024).decode('utf-8')
+            try:
+                msg = connection.recv(1024).decode('utf-8')
+            except (OSError, BrokenPipeError, ConnectionResetError):
+                msg = None
 
             if not msg:
                 print(f"[{username}] disconnected")
-                connection.close()
-                self.connections[username] = None
+                try:
+                    connection.close()
+                except:
+                    pass
+                with self.connections_lock:
+                    if username in self.connections:
+                        del self.connections[username]
                 self.push("server", recipient, f"[{username}] disconnected")
                 break
 
@@ -92,7 +145,8 @@ class ChatServer:
                 client_recipient = client_info.split('--')[1]
 
                 # Track connection
-                self.connections[client_username] = (client_connection, client_recipient)
+                with self.connections_lock:
+                    self.connections[client_username] = (client_connection, client_recipient)
 
                 print(f"[{client_username}] connected")
 

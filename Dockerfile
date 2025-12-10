@@ -17,4 +17,4 @@ COPY src/ ./src/
 EXPOSE 6000
 
 # Run from inside src directory
-CMD ["python", "src/chat_server.py", "6000"]
+CMD ["python", "-u", "src/chat_server.py", "6000"]
