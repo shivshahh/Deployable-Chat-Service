@@ -1,4 +1,4 @@
-```markdown
+markdown
 # Chat Service – Multi-Client TCP Chat with Redis Persistence
 
 This project implements a lightweight, multi-client chat server and client system using Python sockets, Redis-backed message persistence, and Docker Compose orchestration. Clients can connect, exchange messages in real time, and automatically receive full chat history stored in Redis. Clients can also optionally specify a target username to communicate directly with another user when running the Python client.
@@ -309,4 +309,4 @@ Open Kubernetes dashboard:
 ```
 minikube dashboard
 ```
-```
+
