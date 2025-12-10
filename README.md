@@ -1,6 +1,7 @@
+markdown
 # Chat Service – Multi-Client TCP Chat with Redis Persistence
 
-This project implements a lightweight, multi-client chat server and client system using Python sockets, Redis-backed message persistence, and Docker Compose orchestration. Clients can connect, exchange messages in real time, and automatically receive full chat history stored in Redis.
+This project implements a lightweight, multi-client chat server and client system using Python sockets, Redis-backed message persistence, and Docker Compose orchestration. Clients can connect, exchange messages in real time, and automatically receive full chat history stored in Redis. Clients can also optionally specify a target username to communicate directly with another user when running the Python client.
 
 ---
 
@@ -19,7 +20,11 @@ This project implements a lightweight, multi-client chat server and client syste
 - Clean CLI interface  
 - Real-time message streaming  
 - Graceful shutdown using `exit`  
-- Dual-threaded input/output (non-blocking)
+- Dual-threaded input/output (non-blocking)  
+- Optional: send messages directly to another user by passing a second username argument  
+  ```
+  python src/chat_client.py localhost 30060 alice bob
+  ```
 
 ### ✔ Dockerized Deployment
 - Redis container  
@@ -31,14 +36,44 @@ This project implements a lightweight, multi-client chat server and client syste
 
 ## Project Structure
 
-project/
+```
+Deployable-Chat-Service/
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+├── requirements.txt
 │
-├── docker-compose.yml # Runs Redis + Chat Server
+├── helm/
+│   └── chat-app/
+│       ├── Chart.yaml
+│       ├── README.md
+│       ├── values.yaml
+│       └── templates/
+│           ├── _helpers.tpl
+│           ├── chat-server-deployment.yaml
+│           ├── chat-server-service.yaml
+│           ├── hpa.yaml
+│           ├── redis-deployment.yaml
+│           ├── redis-pvc.yaml
+│           ├── redis-service.yaml
 │
-└── src/
-├── chat_server.py # Main TCP chat server
-├── chat_client.py # CLI client
-├── Dockerfile # Server container definition
+├── k8s/
+│   ├── chat-server.yaml
+│   ├── hpa.yaml
+│   ├── namespace.yaml
+│   └── redis.yaml
+│
+├── src/
+│   ├── __init__.py
+│   ├── chat_client.py
+│   └── chat_server.py
+│
+└── test/
+    ├── dep.yaml
+    ├── load_test.py
+    └── serv.yaml
+
+```
 
 ---
 
@@ -48,80 +83,126 @@ Make sure you have **Docker** and **Docker Compose** installed.
 
 ### Start the full system
 
+```
 docker compose up --build
+```
 
 ## Connecting a Client
 
-Clients run on your local machine, not inside Docker.
+Clients run on your local machine, not inside Docker.  
 Open a terminal and run:
 
+```
 python src/chat_client.py 127.0.0.1 6000 username
-
+```
 
 Example:
-python src/chat_client.py localhost 6000 alice
 
+```
+python src/chat_client.py localhost 6000 alice
+```
+
+Direct chat mode (optional):
+
+```
+python src/chat_client.py localhost 6000 alice bob
+```
 
 Then type messages:
-[alice]: Hello everyone!
 
+```
+[alice]: Hello everyone!
+```
 
 To exit gracefully:
+
+```
 exit
+```
+
+---
 
 ## How It Works
-Server (chat_server.py)
-Accepts a TCP socket connection
-Reads the username
-Sends full chat history (pulled from Redis)
-Broadcasts all future messages to every connected client
-Saves messages to Redis (rpush chat_history)
-Uses per-client threads for concurrent message handling
-Client (chat_client.py)
-Sends username on connection
-Receives chat history until HISTORY_END
-Starts:
-Reader thread (prints incoming messages)
-Writer thread (captures user input)
-Uses exit to shut down cleanly
-Redis
+
+### Server (chat_server.py)
+
+- Accepts a TCP socket connection  
+- Reads the username  
+- Sends full chat history (pulled from Redis)  
+- Broadcasts all future messages to every connected client  
+- Saves messages to Redis (`rpush chat_history`)  
+- Uses per-client threads for concurrent message handling  
+- Supports routing of messages when clients specify a target user on connect
+
+### Client (chat_client.py)
+
+- Sends username on connection  
+- Optionally sends a target username if provided on the command line  
+- Receives chat history until `HISTORY_END`  
+- Starts:
+  - Reader thread (prints incoming messages)  
+  - Writer thread (captures user input)  
+- Uses `exit` to shut down cleanly  
+
+### Redis
+
 Stores persistent chat history in a list:
+
+```
 LPUSH chat_history "[alice]: hello"
+```
+
+---
 
 ## Environment Variables
 
 The chat-server container uses the following (defined in docker-compose.yml):
 
+```
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_USER=optional
 REDIS_PASSWORD=optional
+```
+
+---
 
 ## Dockerfile Summary
 
-Based on python:3.13-slim
+- Based on `python:3.13-slim`  
+- Installs Redis Python client  
+- Runs `chat_server.py` at startup  
 
-Installs Redis Python client
-
-Runs chat_server.py at startup
+---
 
 ## Testing Locally Without Docker
 
 Start the Redis service on your Linux host:
 
+```
 sudo service redis-server start
-
+```
 
 Then start the server:
 
+```
 python src/chat_server.py 6000
-
+```
 
 Start multiple clients:
 
+```
 python src/chat_client.py localhost 6000 user1
 python src/chat_client.py localhost 6000 user2
+```
 
+Direct client-to-client:
+
+```
+python src/chat_client.py localhost 6000 alice bob
+```
+
+---
 
 ## 🚀 Kubernetes
 
@@ -129,16 +210,10 @@ python src/chat_client.py localhost 6000 user2
 
 Before deploying, ensure you have:
 
-- **Docker Desktop** (with Kubernetes enabled)
-  - [Download Docker Desktop](https://www.docker.com/products/docker-desktop)
-  - Enable K8s: Preferences → Kubernetes → Enable Kubernetes
-
-- **kubectl** (Kubernetes command-line tool)
-  ```bash
-  # macOS
-  brew install kubectl
-  
-  # Or verify if installed with Docker Desktop
+- **Docker Desktop** (with Kubernetes enabled)  
+  - Enable K8s: Preferences → Kubernetes → Enable Kubernetes  
+- **kubectl**  
+  ```
   kubectl version --client
   ```
 
@@ -170,111 +245,96 @@ kubectl apply -f k8s/hpa.yaml
 #### **Step 3: Verify Deployment**
 
 ```bash
-# Check all resources
 kubectl get all -n chat-app
 ```
 
 Expected output:
-- 1 chat-server pod (1/1 Running)
-- 1 redis pod (1/1 Running)
+- 1 chat-server pod (1/1 Running)  
+- 1 redis pod (1/1 Running)  
 - 2 services (chat-server, redis)
 
 #### **Step 4: Run Chat Clients**
 
-**Terminal 1: First client**
+**Terminal 1:**
+
 ```bash
 python src/chat_client.py localhost 30060 alice
 ```
 
-**Terminal 2: Second client**
+**Terminal 2:**
+
 ```bash
 python src/chat_client.py localhost 30060 bob
 ```
 
-### Chat Server Deployment
-
-Handles multiple client connections and broadcasts messages.
+Or direct messaging:
 
 ```bash
-# Check Chat Server pods
+python src/chat_client.py localhost 30060 alice bob
+```
+
+---
+
+## Chat Server Deployment
+
+```bash
 kubectl get pods -n chat-app -l app=chat-server
-
-# View Chat Server logs
 kubectl logs -n chat-app -l app=chat-server
-
-# Scale manually
 kubectl scale deployment chat-server --replicas=3 -n chat-app
 ```
 
-### HPA (Horizontal Pod Autoscaler)
+---
 
-Automatically scales pods based on CPU/memory usage.
+## HPA (Horizontal Pod Autoscaler)
 
 ```bash
-# Check HPA status
 kubectl get hpa -n chat-app
-
-# Watch HPA scaling in real-time
 kubectl get hpa -n chat-app -w
-
-# View detailed HPA info
 kubectl describe hpa chat-server-hpa -n chat-app
 ```
 
-**Scaling Rules:**
-- Minimum: 1 pod
-- Maximum: 10 pods
-- Scale up if: CPU > 70% OR Memory > 80%
-- Scale down if: CPU < 70% AND Memory < 80%
-
 ---
 
-## 📈 Testing Auto-Scaling
-
-### Manual Scaling Test
-
-```bash
-# Terminal 1: Watch pods scale
-kubectl get pods -n chat-app -w
-
-# Terminal 2: Scale to 5 pods
-kubectl scale deployment chat-server --replicas=5 -n chat-app
-
-# Watch pods transition from Pending → Running
-```
-
-### Load Test (Trigger Auto-Scaling)
-
-```bash
-# Terminal 1: Monitor HPA
-kubectl get hpa -n chat-app -w
-
-# Terminal 2: Monitor pods
-kubectl get pods -n chat-app -w
-
-# Terminal 3: Generate load
-kubectl run -it --rm load-generator --image=busybox /bin/sh -n chat-app
-
-# Inside the pod:
-while sleep 0.01; do wget -q -O- http://chat-server:6000; done
-```
-
-**Expected behavior:**
-- CPU usage increases
-- HPA detects > 70% CPU
-- New pods are created
-- Replicas scale from 1 → 3 → 5 → 10 (as needed)
-- When load stops, pods scale back down
-
----
-
-### Common Issues
+## Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| Pod stuck in `Pending` | Insufficient resources. Scale down other pods or reduce replicas. |
-| `ImagePullBackOff` | Docker image not found. Verify image name in chat-server.yaml. |
-| `Connection refused` | Service not running. Check: `kubectl get svc -n chat-app` |
-| Metrics `<unknown>` | Metrics server not configured. This is okay for local testing. |
+| Pod stuck in `Pending` | Insufficient resources |
+| `ImagePullBackOff` | Verify image name in manifest |
+| `Connection refused` | Check service running |
+| Metrics `<unknown>` | Metrics server missing |
 
 ---
+
+# 🧭 Helm Deployment
+
+```
+cd helm/chat-app
+helm install chat-service . -n chat-app --create-namespace
+```
+
+Check all resources:
+
+```
+k get all -n chat-app
+```
+
+Expose service URL via minikube:
+
+```
+minikube service chat-service-chat-app-server --url -n chat-app
+```
+
+Use this URL for Python load testing:
+
+```
+cd test
+python3 load_test.py --host localhost --port 34843 --clients 100 --messages 5000
+```
+
+Open Kubernetes dashboard:
+
+```
+minikube dashboard
+```
+
