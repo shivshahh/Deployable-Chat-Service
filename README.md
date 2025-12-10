@@ -37,14 +37,42 @@ This project implements a lightweight, multi-client chat server and client syste
 ## Project Structure
 
 ```
-project/
+Deployable-Chat-Service/
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+├── requirements.txt
 │
-├── docker-compose.yml # Runs Redis + Chat Server
+├── helm/
+│   └── chat-app/
+│       ├── Chart.yaml
+│       ├── README.md
+│       ├── values.yaml
+│       └── templates/
+│           ├── _helpers.tpl
+│           ├── chat-server-deployment.yaml
+│           ├── chat-server-service.yaml
+│           ├── hpa.yaml
+│           ├── redis-deployment.yaml
+│           ├── redis-pvc.yaml
+│           ├── redis-service.yaml
 │
-└── src/
-    ├── chat_server.py # Main TCP chat server
-    ├── chat_client.py # CLI client
-    ├── Dockerfile      # Server container definition
+├── k8s/
+│   ├── chat-server.yaml
+│   ├── hpa.yaml
+│   ├── namespace.yaml
+│   └── redis.yaml
+│
+├── src/
+│   ├── __init__.py
+│   ├── chat_client.py
+│   └── chat_server.py
+│
+└── test/
+    ├── dep.yaml
+    ├── load_test.py
+    └── serv.yaml
+
 ```
 
 ---
