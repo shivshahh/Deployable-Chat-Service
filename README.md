@@ -329,7 +329,7 @@ Use this URL for Python load testing:
 
 ```
 cd test
-python3 load_test.py --host localhost --port 34843 --clients 100 --messages 5000
+python3 load_test.py --host localhost --port <PORT> --clients 100 --messages 5000
 ```
 
 Open Kubernetes dashboard:
