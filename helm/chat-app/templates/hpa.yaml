@@ -26,5 +26,24 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.chatServer.autoscaling.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.chatServer.autoscaling.behavior.scaleDown.stabilizationWindowSeconds }}
+      policies:
+        {{- range .Values.chatServer.autoscaling.behavior.scaleDown.policies }}
+        - type: {{ .type }}
+          value: {{ .value }}
+          periodSeconds: {{ .periodSeconds }}
+        {{- end }}
+      selectPolicy: {{ .Values.chatServer.autoscaling.behavior.scaleDown.selectPolicy }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.chatServer.autoscaling.behavior.scaleUp.stabilizationWindowSeconds }}
+      policies:
+        {{- range .Values.chatServer.autoscaling.behavior.scaleUp.policies }}
+        - type: {{ .type }}
+          value: {{ .value }}
+          periodSeconds: {{ .periodSeconds }}
+        {{- end }}
+      selectPolicy: {{ .Values.chatServer.autoscaling.behavior.scaleUp.selectPolicy }}
 {{- end }}
 

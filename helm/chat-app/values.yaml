@@ -7,7 +7,7 @@ namespace:
 
 chatServer:
   image:
-    repository: mshenoydocker/chat-server
+    repository: shankar20/chat-app
     tag: latest
     pullPolicy: Always
   
@@ -25,11 +25,11 @@ chatServer:
   
   resources:
     requests:
-      memory: "64Mi"
-      cpu: "50m"
+      memory: "256Mi"
+      cpu: "100m"
     limits:
-      memory: "128Mi"
-      cpu: "250m"
+      memory: "512Mi"
+      cpu: "500m"
   
   autoscaling:
     enabled: true
@@ -37,6 +37,25 @@ chatServer:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 60
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 60
+        selectPolicy: Min
+
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+          - type: Pods
+            value: 2
+            periodSeconds: 15
+        selectPolicy: Max
 
 redis:
   image:
