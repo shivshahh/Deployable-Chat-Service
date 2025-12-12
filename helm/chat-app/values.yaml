@@ -1,0 +1,77 @@
+# Default values for chat-service
+# This is a YAML-formatted file.
+
+namespace:
+  name: chat-app
+  create: true
+
+chatServer:
+  image:
+    repository: shankar20/chat-app
+    tag: latest
+    pullPolicy: Always
+  
+  replicaCount: 1
+  
+  service:
+    type: NodePort
+    port: 6000
+    targetPort: 6000
+    nodePort: 30060
+  
+  env:
+    redisHost: redis
+    redisPort: "6379"
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 60
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 60
+        selectPolicy: Min
+
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+          - type: Pods
+            value: 2
+            periodSeconds: 15
+        selectPolicy: Max
+
+redis:
+  image:
+    repository: redis
+    tag: "7"
+  
+  replicaCount: 1
+  
+  service:
+    type: ClusterIP
+    port: 6379
+    targetPort: 6379
+  
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 500Mi
+

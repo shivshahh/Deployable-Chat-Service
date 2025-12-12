@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "chat-service.labels" . | nindent 4 }}
+    app: redis
+spec:
+  replicas: {{ .Values.redis.replicaCount }}
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.redis.service.targetPort }}
+          args: ["redis-server", "--appendonly", "yes"]
+          {{- if .Values.redis.persistence.enabled }}
+          volumeMounts:
+            - name: redis-storage
+              mountPath: /data
+          {{- end }}
+      {{- if .Values.redis.persistence.enabled }}
+      volumes:
+        - name: redis-storage
+          persistentVolumeClaim:
+            claimName: redis-data
+      {{- end }}
+

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chat-service.fullname" . }}-server
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "chat-service.labels" . | nindent 4 }}
+    app: chat-server
+spec:
+  replicas: {{ .Values.chatServer.replicaCount }}
+  selector:
+    matchLabels:
+      app: chat-server
+  template:
+    metadata:
+      labels:
+        app: chat-server
+    spec:
+      containers:
+        - name: chat-server
+          image: "{{ .Values.chatServer.image.repository }}:{{ .Values.chatServer.image.tag }}"
+          imagePullPolicy: {{ .Values.chatServer.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.chatServer.service.targetPort }}
+          env:
+            - name: REDIS_HOST
+              value: {{ .Values.chatServer.env.redisHost | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.chatServer.env.redisPort | quote }}
+          resources:
+            {{- toYaml .Values.chatServer.resources | nindent 12 }}
+

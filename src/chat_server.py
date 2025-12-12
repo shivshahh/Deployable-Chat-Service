@@ -3,13 +3,14 @@ import socket
 import threading
 import redis
 import os
+import json
 
 class ChatServer:
     def __init__(self, port):
         self.port = int(port)
-        # Dictionary that maps username to connection socket
         self.connections = {}
-        self.redis = self.redis = redis.Redis(
+        self.connections_lock = threading.Lock()
+        self.redis = redis.Redis(
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", 6379)),
             username=os.getenv("REDIS_USER", None),
@@ -19,59 +20,127 @@ class ChatServer:
         )
     
     def save_message(self, username, recipient, message):
-        msg = f"[{username}]:[{recipient}] {message}"
-        self.redis.rpush("chat_history", msg)
+        msg_obj = {
+            "sender": username,
+            "recipient": recipient,
+            "message": message
+        }
+        self.redis.rpush("chat_history", json.dumps(msg_obj))
                 
+
     def send_history(self, connection, username, recipient):
-        history = self.redis.lrange("chat_history", 0, -1)
+        history = self.redis.lrange("chat_history", -1000, -1)
         
-        for entry in history:
-            tag = entry.split()[0]
+        try:
+            for raw in history:
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
 
-            if recipient == "BROADCAST" and "BROADCAST" in tag:
-                connection.sendall((entry + "\n").encode('utf-8'))
-            elif tag == "[" + username + "]:[" + recipient + "]" or tag == "[" + recipient + "]:[" + username + "]":    
-                connection.sendall((entry + "\n").encode('utf-8'))
+                sender = entry["sender"]
+                rec = entry["recipient"]
+                msg = entry["message"]
 
-        connection.sendall("HISTORY_END\n".encode('utf-8'))
+                # Broadcast messages
+                if recipient == "BROADCAST" and rec == "BROADCAST":
+                    connection.sendall(
+                        f"[{sender}]:[{rec}] {msg}\n".encode("utf-8")
+                    )
+                # Private 1:1 channel
+                elif rec == recipient and sender == username:
+                    connection.sendall(
+                        f"[{sender}]:[{rec}] {msg}\n".encode("utf-8")
+                    )
+                elif rec == username and sender == recipient:
+                    connection.sendall(
+                        f"[{sender}]:[{rec}] {msg}\n".encode("utf-8")
+                    )
 
-    # Pushes out messages to the appropriate connections
+            connection.sendall("HISTORY_END\n".encode("utf-8"))
+
+        except (OSError, BrokenPipeError, ConnectionResetError):
+            raise
+
     def push(self, username, recipient, message):
 
         if "HISTORY_END" in message:
             return
         
-        message = message.rstrip("\n") 
-        push_msg = f"[{username}]: " + message 
+        message = message.rstrip("\n")
+        push_msg = f"[{username}]: {message}"
 
         if username != "server":
             self.save_message(username, recipient, message)
 
+        # Broadcast
         if recipient == "BROADCAST":
-            for connection in self.connections:
-                if connection != username and self.connections[connection] is not None:
-                    self.connections[connection][0].sendall(("\\BROADCAST/" + push_msg).encode('utf-8'))
-        elif recipient in self.connections and self.connections[recipient] is not None:
-            self.connections[recipient][0].sendall(push_msg.encode('utf-8'))
+            with self.connections_lock:
+                connection_keys = list(self.connections.keys())
+            
+            for connection_name in connection_keys:
+                if connection_name != username:
+                    with self.connections_lock:
+                        conn_data = self.connections.get(connection_name)
+                    
+                    if conn_data is not None:
+                        conn_socket = conn_data[0]
+                        try:
+                            conn_socket.sendall(
+                                ("\\BROADCAST/" + push_msg + "\n").encode("utf-8")
+                            )
+                        except (OSError, BrokenPipeError, ConnectionResetError):
+                            with self.connections_lock:
+                                if connection_name in self.connections:
+                                    del self.connections[connection_name]
+                            pass
+        else:
+            
+            with self.connections_lock:
+                conn_data = self.connections.get(recipient)
+            
+            if conn_data is not None:
+                conn_socket = conn_data[0]
+                try:
+                    conn_socket.sendall((push_msg + "\n").encode("utf-8"))
+                except (OSError, BrokenPipeError, ConnectionResetError):
+                    with self.connections_lock:
+                        if recipient in self.connections:
+                            del self.connections[recipient]
+                    pass
 
-    # Each users connection runs in this thread that waits for a message
     def user_thread(self, username):
-        connection, recipient = self.connections[username]
+        with self.connections_lock:
+            conn_data = self.connections.get(username)
+            if conn_data is None:
+                return
+            connection, recipient = conn_data
         
-        # TODO modify so only recipient history is sent
-        # Send message history first
-        self.send_history(connection, username, recipient)
+        try:
+            self.send_history(connection, username, recipient)
+        except:
+            with self.connections_lock:
+                if username in self.connections:
+                    del self.connections[username]
+            return
 
-        # Send that user joined
         self.push("server", recipient, f"[{username}] connected")
 
         while True:
-            msg = connection.recv(1024).decode('utf-8')
+            try:
+                msg = connection.recv(1024).decode('utf-8')
+            except:
+                msg = None
 
             if not msg:
                 print(f"[{username}] disconnected")
-                connection.close()
-                self.connections[username] = None
+                try:
+                    connection.close()
+                except:
+                    pass
+                with self.connections_lock:
+                    if username in self.connections:
+                        del self.connections[username]
                 self.push("server", recipient, f"[{username}] disconnected")
                 break
 
@@ -84,28 +153,24 @@ class ChatServer:
             print("Listening for connections on: " + str(self.port))
 
             while True:
-                # Accept a new connection
                 client_connection, ip = sock.accept()
                 client_info = client_connection.recv(1024).decode('utf-8').strip()
 
                 client_username = client_info.split('--')[0]
                 client_recipient = client_info.split('--')[1]
 
-                # Track connection
-                self.connections[client_username] = (client_connection, client_recipient)
+                with self.connections_lock:
+                    self.connections[client_username] = (client_connection, client_recipient)
 
                 print(f"[{client_username}] connected")
 
-                # Start the user thread (will send history AND then broadcast join)
-                connection_thread = threading.Thread(
+                threading.Thread(
                     target=self.user_thread,
                     args=(client_username,)
-                )
-                connection_thread.start()
+                ).start()
 
         except OSError:
             print("Failed to bind to port: " + str(self.port))
-
 
     def __str__(self):
         return "Port: " + str(self.port)
@@ -118,7 +183,6 @@ def main():
     server = ChatServer(sys.argv[1])
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # Show server config
     print("--- Server config ---\n" + str(server))
     server.execute(sock)
 
